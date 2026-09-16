@@ -85,7 +85,7 @@ def delta(S, K, r, q, sigma, T, kind="call"):
     return _scalaire_si_possible(valeur)
 
 
-def gamma(S, K, r, q, sigma, T,kind="call"):  # En vrai gamma est le même pour un put aussi
+def gamma(S, K, r, q, sigma, T,kind="call"):  # gamma est le même pour un put aussi
     d1,d2,regulier = _d1_d2(S,K,r,q,sigma,T)
     valeur = ( np.exp(-q*T)*norm.pdf(d1) ) / (S*sigma*np.sqrt(T))
     return _scalaire_si_possible(np.where(regulier,valeur,0.0))
