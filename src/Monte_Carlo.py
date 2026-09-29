@@ -88,6 +88,8 @@ def prix_mc_variable_controle(S, K, r, q, sigma, T, kind="call",
     erreur_standard = np.std(estimateur_act,ddof=1)/np.sqrt(n_sims)
     return (moy_estimateur_act,erreur_standard)
 
+#rmq : on pourrait combiner les 2 méthodes ici
+
 
 #Valeurs tests d'affichage
 if __name__ == "__main__":
@@ -95,3 +97,77 @@ if __name__ == "__main__":
     ref = bs.price(S0, K0, r0, q0, v0, T0, "call")
     print(f"reference Black-Scholes = {ref:.6f}")
     print(f"Monte Carlo             = {prix_mc(S0, K0, r0, q0, v0, T0, 'call', seed=42)}")
+
+
+
+#On construit maintenant les Greeks, avec Monte-Carlo (par différence finies), car BS ne sera pas applicable à notre projet final d'autocall
+
+
+#DELTA
+def delta_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0,seed2=None):
+    S_plus = simuler_terminal(S+h, r, q, sigma, T, n_sims, seed=seed)
+    S_moins = simuler_terminal(S-h, r, q, sigma, T, n_sims, seed=seed if seed2==None else seed2) #2 seed pour les tests du notebook sur l'influance des titages indépendents
+    payoff_plus = _payoff(S_plus,K,kind=kind)
+    payoff_moins = _payoff(S_moins,K,kind=kind)
+    diff = payoff_plus-payoff_moins
+    diff_act = diff*np.exp(-r*T)
+    tableau_delta_estim = diff_act/(2*h)
+    delta_estim = np.mean(tableau_delta_estim)
+    erreur_std = np.std(tableau_delta_estim,ddof=1)/np.sqrt(n_sims)
+    return (delta_estim,erreur_std)
+
+#GAMMA
+def gamma_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
+    S_plus = simuler_terminal(S+h, r, q, sigma, T, n_sims, seed=seed)
+    S_moins = simuler_terminal(S-h, r, q, sigma, T, n_sims, seed=seed)
+    S_central = simuler_terminal(S, r, q, sigma, T, n_sims, seed=seed)
+    payoff_plus = _payoff(S_plus,K,kind=kind)
+    payoff_moins = _payoff(S_moins,K,kind=kind)
+    payoff_central = _payoff(S_central,K,kind=kind)
+    diff = payoff_plus-2*payoff_central+payoff_moins
+    diff_act = diff*np.exp(-r*T)
+    tableau_gamma_estim = diff_act/(h**2)
+    gamma_estim = np.mean(tableau_gamma_estim)
+    erreur_std = np.std(tableau_gamma_estim,ddof=1)/np.sqrt(n_sims)
+    return (gamma_estim,erreur_std)
+    
+#VEGA
+def vega_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
+    Vol_plus = simuler_terminal(S, r, q, sigma+h, T, n_sims, seed=seed)
+    Vol_moins = simuler_terminal(S-h, r, q, sigma-h, T, n_sims, seed=seed)
+    payoff_plus = _payoff(Vol_plus,K,kind=kind)
+    payoff_moins = _payoff(Vol_moins,K,kind=kind)
+    diff = payoff_plus-payoff_moins
+    diff_act = diff*np.exp(-r*T)
+    tableau_vega_estim = diff_act/(2*h)
+    vega_estim = np.mean(tableau_vega_estim)
+    erreur_std = np.std(tableau_vega_estim,ddof=1)/np.sqrt(n_sims)
+    return (vega_estim,erreur_std)
+
+#RHO
+def rho_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
+    rho_plus = simuler_terminal(S, r+h, q, sigma, T, n_sims, seed=seed)
+    rho_moins = simuler_terminal(S, r-h, q, sigma, T, n_sims, seed=seed)
+    payoff_plus = _payoff(rho_plus,K,kind=kind)
+    payoff_moins = _payoff(rho_moins,K,kind=kind)
+    payoff_act_plus = payoff_plus*np.exp(-(r+h)*T)
+    payoff_act_moins = payoff_moins*np.exp(-(r-h)*T)
+    diff_act = payoff_act_plus-payoff_act_moins
+    tableau_rho_estim = diff_act/(2*h)
+    rho_estim = np.mean(tableau_rho_estim)
+    erreur_std = np.std(tableau_rho_estim,ddof=1)/np.sqrt(n_sims)
+    return (rho_estim,erreur_std)    
+
+def theta_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
+    theta_plus = simuler_terminal(S, r, q, sigma, T+h, n_sims, seed=seed)
+    theta_moins = simuler_terminal(S, r, q, sigma, T-h, n_sims, seed=seed)
+    payoff_plus = _payoff(theta_plus,K,kind=kind)
+    payoff_moins = _payoff(theta_moins,K,kind=kind)
+    payoff_act_plus = payoff_plus*np.exp(-r*(T+h))
+    payoff_act_moins = payoff_moins*np.exp(-r*(T-h))
+    diff_act = payoff_act_plus-payoff_act_moins
+    tableau_theta_estim = -diff_act/(2*h*bs.DAYS_PER_YEAR)
+    theta_estim = np.mean(tableau_theta_estim)
+    erreur_std = np.std(tableau_theta_estim,ddof=1)/np.sqrt(n_sims)
+    return (theta_estim,erreur_std)    
+
