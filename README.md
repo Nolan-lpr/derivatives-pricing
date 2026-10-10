@@ -9,7 +9,9 @@ We will then go step by step up to a Phoenix autocall structured note pricer
 - `black_scholes.py` : Closed-form European option pricing with its analytical Greeks
 - `Monte_Carlo.py` : Monte Carlo pricing of European vanilla options under Black-Scholes dynamics, and comparison to Black-Scholes. And pricing of the Greeks
 - `barriere.py` : Monte Carlo pricing of the four standard barrier types on simulated paths, closed-form Reiner-Rubinstein (1991) reference for the down-and-in put, and the Broadie-Glasserman-Kou continuity correction
-- Coming : phoenix auto call pricer
+- `autocall.py` : Monte Carlo pricing of a phoenix autocall note, with memory coupons, European or continuously monitored capital protection, distribution metrics (call probability per date, expected life, loss probability), and delta / vega by finite differences with common random numbers
+
+- Coming (last commit) : Call-back probability by date, controle variable of the autocall, and full explanation and graphs of the product in the jupyter Notebook dedicated to the autocall.
 
 ## Validation
 
@@ -18,6 +20,8 @@ We will then go step by step up to a Phoenix autocall structured note pricer
 - `test_monte_carlo.py` : Monte_Carlo.py is tested against Black-Scholes with statistical error, against the martingale identity E(S_T) = S e^((r-q)T), and variance reduction methods are checked to be unbiased and their factor reduction is measured. Validation tests were designed with AI assistance, then debugged and extended by hand. 
 
 - `test_barriere.py` : path simulation is checked against `Monte_Carlo.py` (the terminal column must have the same law whatever the number of steps), prices against in-out parity with common random numbers, against the closed-form reference, and against the degenerate cases where the barrier is unreachable or breached from the start. Validation tests were designed with AI assistance, then debugged and extended by hand. 
+
+- `test_autocall.py` : no closed form exists for a phoenix autocall, so degenerate cases replace the reference: zero coupon with no call is a zero-coupon bond (exact), moving the protection to 100% makes it that bond minus a vanilla put (checked against black_scholes.py), and a zero call level reduces it to a single certain cash flow at the first date. The rest is internal consistency: call probabilities plus survival sum to one, monotonicities have the right sign, and the optional leg is decomposed into a put plus a digital, which gives an exact expected price. 280 tests across the suite. Validation tests were designed with AI assistance, then debugged and extended by hand.
 
 You can try the tests with :
 ```bash
@@ -90,6 +94,7 @@ This matters in practice rather than academically: a path matrix costs
 brute force the accuracy the correction gives at 12 steps is not feasible in
 memory.
 
+
 ## Model and numerical limitations
 
 `black_scholes.py` :
@@ -127,3 +132,18 @@ We work here with Black-Scholes closed-form, which contains several limitations 
   the running minimum actually matters for a barrier, so the full path never
   needs to be stored; the current implementation does not exploit this.
 - Closed form restricted to B <= K and to the down-and-in put only here
+
+`autocall.py`:
+- Scale invariance: every level is a fraction of a reference spot, so a note priced at
+  issue does not depend on the spot at all and its delta is identically zero. The
+  contractual reference is therefore separated from the current spot (`S_ref`).
+- Issue date only: the pricer always starts from a full maturity with every observation
+  date ahead. A seasoned note would also need the elapsed dates and the current
+  memory-coupon counter.
+- Constant volatility hurts more here than anywhere else: the payoff hangs on the far
+  left tail, exactly where the equity skew is steepest, and the sold down-and-in put is
+  priced off a flat surface.
+- The contractual dates carry no monitoring bias, but the continuous protection does,
+  and the Broadie-Glasserman-Kou correction is not applied to it yet.
+- No control variate: S_T correlates poorly with this payoff, but the closed-form
+  down-and-in put is now available and is the natural control for the optional leg.
