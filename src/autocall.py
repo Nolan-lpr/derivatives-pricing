@@ -20,15 +20,15 @@ def dates_observation(T, n_obs):
 # --------------------------------------------------------------------
 # Pricer autocall
 # --------------------------------------------------------------------
-# On travail exclusivement sur des masques de boleens pour les vecteurs d'etats ici
+# On travaille exclusivement sur des masques de booleens pour les vecteurs d'etats ici
 def prix_autocall_mc(S0, r, q, sigma, T, n_obs=20, niveau_rappel=1.0,
                      barriere_coupon=0.7, barriere_protection=0.6,
                      coupon=0.02, memoire=True, protection="europeenne",
                      nominal=100.0, n_pas_par_obs=1, n_sims=100_000,
                      seed=None, S_ref = None):
-    if S_ref is None: #Permet de pricer un produit qui n'est pas neuf : S_ref à 80 par ex et S0 à 100 au départ
+    if S_ref is None: #Permet de pricer un produit qui n'est pas neuf : S_ref à 100 par ex au départ et S0 à 100
         S_ref=S0
-    # On commence par simuler un tableau de chemins sumulés pour le put barriere
+    # On commence par simuler un tableau de chemins simulés pour le put barriere
     chemins = br.simuler_chemins(S0, r, q, sigma, T, n_obs*n_pas_par_obs, n_sims, seed=seed)
     #On regarde aux dates du contrat
     v_observees = chemins[:,np.arange(1,n_obs+1)*n_pas_par_obs]
@@ -84,7 +84,8 @@ def prix_autocall_mc(S0, r, q, sigma, T, n_obs=20, niveau_rappel=1.0,
         perte_moyenne_si_perte = 0.0
 
     resultats = {'prix':valeur_present.mean(),'err_std':err_std,'proba_rappel':proba_rappel,'proba_survie_maturite':proba_survie_maturite,
-            'duree_vie_moyenne':duree_vie_moyenne,'proba_perte':proba_perte,'perte_moyenne_si_perte':perte_moyenne_si_perte}
+            'duree_vie_moyenne':duree_vie_moyenne,'proba_perte':proba_perte,'perte_moyenne_si_perte':perte_moyenne_si_perte,
+            'flux':valeur_present, 'S_T':S_T}
     return resultats
 
 
@@ -96,8 +97,17 @@ def delta_autocall(S0, r, q, sigma, T, S_ref=None, h_reel=0.01, seed=0, **kwargs
     if S_ref is None:
         S_ref = S0
     h = S0*h_reel
-    plus = prix_autocall_mc(S0+h, r, q, sigma, T,seed=seed, **kwargs)["prix"]
-    moins = prix_autocall_mc(S0-h, r, q, sigma, T, seed=seed, **kwargs)["prix"]
+    plus = prix_autocall_mc(S0+h, r, q, sigma, T, S_ref=S_ref, seed=seed, **kwargs)["prix"]
+    moins = prix_autocall_mc(S0-h, r, q, sigma, T, S_ref=S_ref, seed=seed, **kwargs)["prix"]
+    return (plus-moins)/(2*h)
+
+#Petite version modifiée pour le test à tirages indépendants (graines décalée dans la jambe basse) pour le Notebook autocall (point 7)
+def delta_autocall_graine_differente(S0, r, q, sigma, T, S_ref=None, h_reel=0.01, seed=0, **kwargs):
+    if S_ref is None:
+        S_ref = S0
+    h = S0*h_reel
+    plus = prix_autocall_mc(S0+h, r, q, sigma, T, S_ref=S_ref, seed=seed, **kwargs)["prix"]
+    moins = prix_autocall_mc(S0-h, r, q, sigma, T, S_ref=S_ref, seed=seed+500, **kwargs)["prix"]
     return (plus-moins)/(2*h)
 
 def vega_autocall(S0, r, q, sigma, T, h_vol=0.01, seed=0, **kwargs):
@@ -105,6 +115,46 @@ def vega_autocall(S0, r, q, sigma, T, h_vol=0.01, seed=0, **kwargs):
     moins = prix_autocall_mc(S0, r, q, sigma-h_vol, T,seed=seed, **kwargs)["prix"]
     return (plus-moins)/(2*h_vol)
 
+
+
+# --------------------------------------------------------------------
+# Reduction de variance par variable de controle
+# --------------------------------------------------------------------
+# Le controle est un put vanille de strike egal a la barriere de protection, 
+# evalué sur LES MEMES trajectoires. Dépend que de S_T donc Black_Scholes s'applique.
+def prix_autocall_mc_controle(S0, r, q, sigma, T, protection="europeenne",
+                              barriere_protection=0.6, S_ref=None, **kwargs):
+    if S_ref is None:
+        S_ref = S0
+    if protection != "europeenne":
+        raise NotImplementedError(
+            "Controle valide pour une protection europeenne seulement : sinon biais de monitoring injecté")
+
+    res = prix_autocall_mc(S0, r, q, sigma, T, protection=protection,
+                           barriere_protection=barriere_protection,
+                           S_ref=S_ref, **kwargs)
+    X = res["flux"]
+    S_T = res["S_T"]
+    n_sims = X.size
+
+    K_ctrl = barriere_protection * S_ref
+    Y = np.exp(-r * T) * mc._payoff(S_T, K_ctrl, kind="put")
+    EY = bs.price(S0, K_ctrl, r, q, sigma, T, kind="put")
+
+    var_Y = np.var(Y, ddof=1)
+    beta = 0.0 if var_Y == 0.0 else np.cov(X, Y, ddof=1)[0, 1] / var_Y
+
+    X_corrige = X - beta * (Y - EY)
+
+    err_std = np.std(X_corrige, ddof=1) / np.sqrt(n_sims)
+    correlation = 0.0 if var_Y == 0.0 else np.corrcoef(X, Y)[0, 1]
+
+    sortie = dict(res)
+    sortie.update({"prix": X_corrige.mean(), "err_std": err_std,
+                   "flux": X_corrige, "beta": beta, "correlation": correlation,
+                   "err_std_simple": res["err_std"],
+                   "facteur_reduction": (res["err_std"] / err_std) ** 2})
+    return sortie
 
 
 
