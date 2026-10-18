@@ -30,7 +30,7 @@ def _payoff(S_T,K,kind):
     elif kind=='put':
         payoff = np.maximum(K-S_T,0)
     else:
-        raise ValueError("Kind Name Error")
+        raise ValueError("kind : entrez 'call' ou 'put' svp")
     return payoff
 
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 #DELTA
 def delta_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0,seed2=None):
     S_plus = simuler_terminal(S+h, r, q, sigma, T, n_sims, seed=seed)
-    S_moins = simuler_terminal(S-h, r, q, sigma, T, n_sims, seed=seed if seed2==None else seed2) #2 seed pour les tests du notebook sur l'influance des titages indépendents
+    S_moins = simuler_terminal(S-h, r, q, sigma, T, n_sims, seed=seed if seed2 is None else seed2) #2 seed pour les tests du notebook sur l'influance des titages indépendents
     payoff_plus = _payoff(S_plus,K,kind=kind)
     payoff_moins = _payoff(S_moins,K,kind=kind)
     diff = payoff_plus-payoff_moins
@@ -134,7 +134,7 @@ def gamma_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
 #VEGA
 def vega_mc(S, K, r, q, sigma, T,h, kind="call", n_sims=100_000, seed=0):
     Vol_plus = simuler_terminal(S, r, q, sigma+h, T, n_sims, seed=seed)
-    Vol_moins = simuler_terminal(S-h, r, q, sigma-h, T, n_sims, seed=seed)
+    Vol_moins = simuler_terminal(S, r, q, sigma-h, T, n_sims, seed=seed)
     payoff_plus = _payoff(Vol_plus,K,kind=kind)
     payoff_moins = _payoff(Vol_moins,K,kind=kind)
     diff = payoff_plus-payoff_moins
